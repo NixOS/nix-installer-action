@@ -1,5 +1,8 @@
 # Install Nix GitHub Action
 
+> [!IMPORTANT]
+> This action is experimental and is currently undergoing testing.
+
 A GitHub Action to install [Nix](https://nixos.org) using the [NixOS nix-installer](https://github.com/NixOS/nix-installer).
 
 ## Usage
