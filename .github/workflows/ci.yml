@@ -1,0 +1,159 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  install:
+    name: Install (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+          - os: ubuntu-slim
+          - os: ubuntu-24.04-arm
+          - os: macos-latest
+          - os: macos-26
+          - os: macos-15-intel
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: ./
+        with:
+          trust-runner-user: true
+          extra-conf: |
+            access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify Nix installation
+        run: |
+          nix --version
+          nix-instantiate --eval -E 'builtins.currentTime'
+
+      - name: Test nix run
+        run: nix run nixpkgs#hello --inputs-from .
+
+      - name: Test nix shell
+        run: nix shell nixpkgs#hello --inputs-from . --command hello
+
+      - name: Test nix-shell
+        run: nix-shell -p hello --command hello
+
+      - name: Test nix store gc
+        run: nix store gc
+
+      - name: Test shell integration (bash)
+        shell: bash --login {0}
+        run: nix-instantiate --eval -E 'builtins.currentTime'
+
+      - name: Test shell integration (sh)
+        shell: sh -l {0}
+        run: nix-instantiate --eval -E 'builtins.currentTime'
+
+      - name: Test shell integration (zsh)
+        if: runner.os == 'macOS'
+        run: zsh --login -c "nix-instantiate --eval -E 'builtins.currentTime'"
+
+  install-options:
+    name: Install with options (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: extra-conf
+            os: ubuntu-latest
+            extra-conf: |
+              experimental-features = nix-command flakes
+              warn-dirty = false
+          - name: init-no
+            os: ubuntu-latest
+            init: "no"
+          - name: add-channel
+            os: ubuntu-latest
+            add-channel: true
+          - name: verbose
+            os: ubuntu-latest
+            verbosity: "2"
+            logger: pretty
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: ./
+        with:
+          extra-conf: |
+            access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
+            ${{ matrix.extra-conf || '' }}
+          init: ${{ matrix.init || '' }}
+          add-channel: ${{ matrix.add-channel || 'false' }}
+          verbosity: ${{ matrix.verbosity || '0' }}
+          logger: ${{ matrix.logger || 'compact' }}
+
+      - name: Verify Nix installation
+        run: |
+          nix --version
+          nix config show
+
+      - name: Test extra-conf applied
+        if: matrix.name == 'extra-conf'
+        run: |
+          nix config show | grep -q "warn-dirty = false"
+
+      - name: Test channel added
+        if: matrix.name == 'add-channel'
+        run: |
+          # Channel is added to root's profile since install runs with sudo
+          # Use sudo -i for login shell to get nix in PATH
+          if ! sudo -i nix-channel --list | grep -q nixpkgs; then
+            echo "ERROR: nixpkgs channel not found in root's channels"
+            sudo -i nix-channel --list
+            exit 1
+          fi
+          echo "Channel verified:"
+          sudo -i nix-channel --list
+
+      - name: Test init=no (systemd unit not enabled)
+        if: matrix.name == 'init-no'
+        run: |
+          # With init=no, systemd should not be configured to manage nix-daemon
+          if systemctl is-enabled nix-daemon.socket 2>/dev/null; then
+            echo "ERROR: nix-daemon.socket should not be enabled with init=no"
+            exit 1
+          fi
+          if systemctl is-enabled nix-daemon.service 2>/dev/null; then
+            echo "ERROR: nix-daemon.service should not be enabled with init=no"
+            exit 1
+          fi
+          echo "Confirmed: nix-daemon not managed by systemd (as expected with init=no)"
+          # Nix should still work
+          nix run nixpkgs#hello --inputs-from .
+
+  tests:
+    name: All tests passed
+    runs-on: ubuntu-latest
+    needs:
+      - install
+      - install-options
+    if: always()
+    steps:
+      - name: Check all jobs passed
+        run: |
+          if [[ "${{ needs.install.result }}" != "success" ]] || \
+             [[ "${{ needs.install-options.result }}" != "success" ]]; then
+            echo "Some tests failed"
+            exit 1
+          fi
+          echo "All tests passed"
