@@ -11,5 +11,5 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: cachix/install-nix-action@v30
+      - uses: a-kenji/nix-installer-action@main
       - run: nix build .#checks.x86_64-linux.formatting -L
