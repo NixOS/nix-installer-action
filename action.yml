@@ -30,10 +30,10 @@ inputs:
     description: "Path to the locally built installer (used with dogfood)"
     required: false
     default: ""
-  no-init:
-    description: "Skip init system configuration (Nix will be root-only)"
+  init:
+    description: "Init system configuration: auto (detect container), yes (use systemd/launchd), no (manual daemon)"
     required: false
-    default: "false"
+    default: "auto"
   trust-runner-user:
     description: "Add the current user to trusted-users in nix.conf"
     required: false
@@ -78,6 +78,38 @@ runs:
         INSTALLER_SYSTEM="${ARCH_PART}-${OS_PART}"
         echo "system=$INSTALLER_SYSTEM" >> "$GITHUB_OUTPUT"
         echo "Detected platform: $INSTALLER_SYSTEM (OS=$RUNNER_OS, ARCH=$RUNNER_ARCH)"
+
+    - name: Detect init system
+      shell: bash
+      id: init
+      run: |
+        INIT_INPUT="${{ inputs.init }}"
+
+        if [ "$INIT_INPUT" = "yes" ]; then
+          USE_INIT="yes"
+          echo "Init mode: yes (explicit)"
+        elif [ "$INIT_INPUT" = "no" ]; then
+          USE_INIT="no"
+          echo "Init mode: no (explicit)"
+        else
+          # Auto-detect: check if systemd is PID 1
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            PID1_COMM="$(cat /proc/1/comm 2>/dev/null || echo unknown)"
+            if [ "$PID1_COMM" = "systemd" ]; then
+              USE_INIT="yes"
+              echo "Init mode: yes (auto-detected systemd as PID 1)"
+            else
+              USE_INIT="no"
+              echo "Init mode: no (auto-detected container, PID 1 is '$PID1_COMM')"
+            fi
+          else
+            # macOS always uses launchd
+            USE_INIT="yes"
+            echo "Init mode: yes (macOS uses launchd)"
+          fi
+        fi
+
+        echo "use_init=$USE_INIT" >> "$GITHUB_OUTPUT"
 
     - name: Download installer from release
       shell: bash
@@ -165,7 +197,7 @@ runs:
           INSTALL_ARGS+=(--add-channel)
         fi
 
-        if [ "${{ inputs.no-init }}" == "true" ]; then
+        if [ "${{ steps.init.outputs.use_init }}" = "no" ]; then
           INSTALL_ARGS+=(--init none)
         fi
 
@@ -240,6 +272,26 @@ runs:
         fi
         echo "NIX_PROFILES=/nix/var/nix/profiles/default $NIX_LINK" >>"$GITHUB_ENV"
         echo "Nix installation completed successfully"
+
+    - name: Start nix-daemon manually (for no-init environments)
+      shell: bash
+      if: steps.init.outputs.use_init == 'no' && runner.os == 'Linux'
+      run: |
+        echo "Starting nix-daemon manually (no-init mode)..."
+        sudo /nix/var/nix/profiles/default/bin/nix-daemon &
+
+        for i in {1..300}; do
+          if [ -S /nix/var/nix/daemon-socket/socket ]; then
+            echo "nix-daemon is ready"
+            break
+          fi
+          sleep 0.1
+        done
+
+        if [ ! -S /nix/var/nix/daemon-socket/socket ]; then
+          echo "::error ::nix-daemon socket not available after 30 seconds"
+          exit 1
+        fi
 
     - name: Setup Nix in PATH
       shell: bash
