@@ -38,6 +38,7 @@ jobs:
         run: |
           nix --version
           nix-instantiate --eval -E 'builtins.currentTime'
+          nix config check
 
       - name: Test nix run
         run: nix run nixpkgs#hello --inputs-from .
@@ -106,6 +107,7 @@ jobs:
         run: |
           nix --version
           nix config show
+          nix config check
 
       - name: Test extra-conf applied
         if: matrix.name == 'extra-conf'
