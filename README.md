@@ -30,12 +30,15 @@ A GitHub Action to install [Nix](https://nixos.org) using the [NixOS nix-install
     installer-version: v3.11.3
 ```
 
-**No-init mode (for containers without systemd):**
+**Container environments (e.g., `ubuntu-slim`):**
+
+The action auto-detects the absence of systemd and switches to a manual initialization.
+You can override this behavior:
 
 ```yaml
 - uses: NixOS/nix-installer-action@main
   with:
-    no-init: true
+    init: no  # Explicit: skip init system, start daemon manually
 ```
 
 ## Inputs
@@ -47,7 +50,7 @@ A GitHub Action to install [Nix](https://nixos.org) using the [NixOS nix-install
 | `logger` | Logger format: `compact`, `full`, `pretty`, `json` | `compact` |
 | `verbosity` | Verbosity level: `0` (info), `1` (debug), `2` (trace) | `0` |
 | `add-channel` | Setup the default system channels | `false` |
-| `no-init` | Skip init system configuration (Nix will be root-only) | `false` |
+| `init` | Init system: `auto` (detect container), `yes` (use systemd/launchd), `no` (manual daemon) | `auto` |
 | `trust-runner-user` | Add the current user to `trusted-users` in nix.conf | `true` |
 
 ## Supported Platforms
