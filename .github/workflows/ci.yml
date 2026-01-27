@@ -2,9 +2,7 @@ name: CI
 
 on:
   pull_request:
-  push:
-    branches:
-      - main
+  merge_group:
   workflow_dispatch:
 
 jobs:
@@ -63,6 +61,14 @@ jobs:
       - name: Test shell integration (zsh)
         if: runner.os == 'macOS'
         run: zsh --login -c "nix-instantiate --eval -E 'builtins.currentTime'"
+
+  formatting:
+    name: Check formatting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./
+      - run: nix build .#checks.x86_64-linux.formatting -L
 
   install-options:
     name: Install with options (${{ matrix.name }})
@@ -147,13 +153,15 @@ jobs:
     name: All tests passed
     runs-on: ubuntu-latest
     needs:
+      - formatting
       - install
       - install-options
     if: always()
     steps:
       - name: Check all jobs passed
         run: |
-          if [[ "${{ needs.install.result }}" != "success" ]] || \
+          if [[ "${{ needs.formatting.result }}" != "success" ]] || \
+             [[ "${{ needs.install.result }}" != "success" ]] || \
              [[ "${{ needs.install-options.result }}" != "success" ]]; then
             echo "Some tests failed"
             exit 1
