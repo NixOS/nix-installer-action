@@ -38,6 +38,19 @@ jobs:
           nix-instantiate --eval -E 'builtins.currentTime'
           nix config check
 
+      - name: Verify KVM in system-features matches /dev/kvm availability
+        if: runner.os == 'Linux'
+        run: |
+          nix config show system-features
+          if [ -e /dev/kvm ]; then
+            nix config show system-features | grep -q 'kvm'
+          else
+            if nix config show system-features | grep -q 'kvm'; then
+              echo "FAIL: /dev/kvm missing but kvm is in system-features"
+              exit 1
+            fi
+          fi
+
       - name: Test nix run
         run: nix run nixpkgs#hello --inputs-from .
 
