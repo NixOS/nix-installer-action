@@ -38,6 +38,10 @@ jobs:
           nix-instantiate --eval -E 'builtins.currentTime'
           nix config check
 
+      - name: Verify trusted-users includes runner user
+        run: |
+          nix config show trusted-users | grep -q "$USER"
+
       - name: Verify KVM in system-features matches /dev/kvm availability
         if: runner.os == 'Linux'
         run: |
