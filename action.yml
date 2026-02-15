@@ -224,7 +224,7 @@ runs:
           EXTRA_CONF="trusted-users = root $USER"
         fi
         if [ "${{ inputs.enable-kvm }}" == "true" ] && [ -e /dev/kvm ]; then
-          EXTRA_CONF="${EXTRA_CONF:+$EXTRA_CONF"$'\n'"}extra-system-features = kvm"
+          EXTRA_CONF="$EXTRA_CONF"$'\n'"extra-system-features = kvm"
         fi
         if [ -n "${{ inputs.extra-conf }}" ]; then
           if [ -n "$EXTRA_CONF" ]; then
