@@ -38,6 +38,10 @@ inputs:
     description: "Add the current user to trusted-users in nix.conf"
     required: false
     default: "true"
+  enable-kvm:
+    description: "Enable KVM for hardware-accelerated virtualization on Linux runners"
+    required: false
+    default: "true"
 
 runs:
   using: "composite"
@@ -163,6 +167,19 @@ runs:
           echo "Downloaded installer to: $INSTALLER_DIR/$BINARY_NAME"
         fi
 
+    - name: Enable KVM
+      shell: bash
+      if: runner.os == 'Linux' && inputs.enable-kvm == 'true'
+      run: |
+        if [ -e /dev/kvm ]; then
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-nix-installer-kvm.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+          echo "KVM enabled"
+        else
+          echo "KVM not available on this runner"
+        fi
+
     - name: Run nix-installer
       shell: bash
       env:
@@ -201,10 +218,13 @@ runs:
           INSTALL_ARGS+=(--init none)
         fi
 
-        # Build extra-conf with optional trusted-users
+        # Build extra-conf with optional trusted-users and KVM support
         EXTRA_CONF=""
         if [ "${{ inputs.trust-runner-user }}" == "true" ]; then
           EXTRA_CONF="trusted-users = root $USER"
+        fi
+        if [ "${{ inputs.enable-kvm }}" == "true" ] && [ -e /dev/kvm ]; then
+          EXTRA_CONF="${EXTRA_CONF:+$EXTRA_CONF"$'\n'"}extra-system-features = kvm"
         fi
         if [ -n "${{ inputs.extra-conf }}" ]; then
           if [ -n "$EXTRA_CONF" ]; then
