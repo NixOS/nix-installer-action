@@ -50,11 +50,14 @@ runs:
       shell: bash
       id: platform
       run: |
-        case "$RUNNER_OS" in
-          Linux)
+        RUNNER_OS_LOWER="${RUNNER_OS,,}"
+        RUNNER_ARCH_LOWER="${RUNNER_ARCH,,}"
+
+        case "$RUNNER_OS_LOWER" in
+          linux)
             OS_PART="linux"
             ;;
-          macOS)
+          macos)
             OS_PART="darwin"
             ;;
           *)
@@ -63,14 +66,14 @@ runs:
             ;;
         esac
 
-        case "$RUNNER_ARCH" in
-          X64)
+        case "$RUNNER_ARCH_LOWER" in
+          x64)
             ARCH_PART="x86_64"
             ;;
-          ARM64)
+          arm64)
             ARCH_PART="aarch64"
             ;;
-          ARM)
+          arm)
             ARCH_PART="armv7l"
             ;;
           *)
@@ -97,7 +100,7 @@ runs:
           echo "Init mode: no (explicit)"
         else
           # Auto-detect: check if systemd is PID 1
-          if [ "$RUNNER_OS" = "Linux" ]; then
+          if [ "${RUNNER_OS,,}" = "linux" ]; then
             PID1_COMM="$(cat /proc/1/comm 2>/dev/null || echo unknown)"
             if [ "$PID1_COMM" = "systemd" ]; then
               USE_INIT="yes"
@@ -237,11 +240,11 @@ runs:
           INSTALL_ARGS+=(--extra-conf "$EXTRA_CONF")
         fi
 
-        case "$RUNNER_OS" in
-          Linux)
+        case "${RUNNER_OS,,}" in
+          linux)
             PLANNER="linux"
             ;;
-          macOS)
+          macos)
             PLANNER=""
             ;;
           *)
