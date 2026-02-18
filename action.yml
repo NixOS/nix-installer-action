@@ -50,8 +50,8 @@ runs:
       shell: bash
       id: platform
       run: |
-        RUNNER_OS_LOWER="${RUNNER_OS,,}"
-        RUNNER_ARCH_LOWER="${RUNNER_ARCH,,}"
+        RUNNER_OS_LOWER="$(printf '%s' "$RUNNER_OS" | tr '[:upper:]' '[:lower:]')"
+        RUNNER_ARCH_LOWER="$(printf '%s' "$RUNNER_ARCH" | tr '[:upper:]' '[:lower:]')"
 
         case "$RUNNER_OS_LOWER" in
           linux)
@@ -84,6 +84,7 @@ runs:
 
         INSTALLER_SYSTEM="${ARCH_PART}-${OS_PART}"
         echo "system=$INSTALLER_SYSTEM" >> "$GITHUB_OUTPUT"
+        echo "os=$OS_PART" >> "$GITHUB_OUTPUT"
         echo "Detected platform: $INSTALLER_SYSTEM (OS=$RUNNER_OS, ARCH=$RUNNER_ARCH)"
 
     - name: Detect init system
@@ -100,7 +101,7 @@ runs:
           echo "Init mode: no (explicit)"
         else
           # Auto-detect: check if systemd is PID 1
-          if [ "${RUNNER_OS,,}" = "linux" ]; then
+          if [ "${{ steps.platform.outputs.os }}" = "linux" ]; then
             PID1_COMM="$(cat /proc/1/comm 2>/dev/null || echo unknown)"
             if [ "$PID1_COMM" = "systemd" ]; then
               USE_INIT="yes"
@@ -240,11 +241,11 @@ runs:
           INSTALL_ARGS+=(--extra-conf "$EXTRA_CONF")
         fi
 
-        case "${RUNNER_OS,,}" in
+        case "${{ steps.platform.outputs.os }}" in
           linux)
             PLANNER="linux"
             ;;
-          macos)
+          darwin)
             PLANNER=""
             ;;
           *)
