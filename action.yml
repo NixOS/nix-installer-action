@@ -199,7 +199,7 @@ runs:
           exit 1
         fi
 
-        INSTALL_ARGS=(--no-confirm --explain)
+        INSTALL_ARGS=(--no-confirm --explain --enable-flakes)
 
         if [ -n "${{ inputs.logger }}" ] && [ "${{ inputs.logger }}" != "compact" ]; then
           INSTALL_ARGS+=(--logger "${{ inputs.logger }}")
