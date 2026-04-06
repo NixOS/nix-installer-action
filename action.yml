@@ -175,13 +175,16 @@ runs:
       shell: bash
       if: runner.os == 'Linux' && inputs.enable-kvm == 'true'
       run: |
-        if [ -e /dev/kvm ]; then
+        if [ ! -e /dev/kvm ]; then
+          echo "KVM not available on this runner"
+        elif [ ! -d /etc/udev/rules.d ] || ! command -v udevadm >/dev/null 2>&1; then
+          echo "KVM present but udev unavailable (container runner?) — skipping udev rule, /dev/kvm assumed accessible via hostPath mount"
+        else
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
             | sudo tee /etc/udev/rules.d/99-nix-installer-kvm.rules
-          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+          sudo udevadm control --reload-rules || true
+          sudo udevadm trigger --name-match=kvm || true
           echo "KVM enabled"
-        else
-          echo "KVM not available on this runner"
         fi
 
     - name: Run nix-installer
