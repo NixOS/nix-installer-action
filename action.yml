@@ -228,7 +228,10 @@ runs:
         # Build extra-conf with optional trusted-users and KVM support
         EXTRA_CONF=""
         if [ "${{ inputs.trust-runner-user }}" == "true" ]; then
-          EXTRA_CONF="trusted-users = root $USER"
+          # $USER is unset on runners that exec steps without a login
+          # shell (e.g. actions-runner-controller containers). id -un
+          # asks getpwuid for the effective user and works regardless.
+          EXTRA_CONF="trusted-users = root $(id -un)"
         fi
         if [ "${{ inputs.enable-kvm }}" == "true" ] && [ -e /dev/kvm ]; then
           EXTRA_CONF="$EXTRA_CONF"$'\n'"extra-system-features = kvm"
