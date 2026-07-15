@@ -82,6 +82,11 @@ runs:
             ;;
         esac
 
+        if [ "$OS_PART" = "darwin" ] && [ "$ARCH_PART" = "x86_64" ]; then
+          echo "::error ::x86_64-darwin is not supported by nix-installer. Use an Apple Silicon (ARM64) runner."
+          exit 1
+        fi
+
         INSTALLER_SYSTEM="${ARCH_PART}-${OS_PART}"
         echo "system=$INSTALLER_SYSTEM" >> "$GITHUB_OUTPUT"
         echo "os=$OS_PART" >> "$GITHUB_OUTPUT"
