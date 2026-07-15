@@ -1,6 +1,10 @@
 name: "Install Nix"
 description: "Install Nix using the experimental nix-installer"
 
+branding:
+  icon: "box"
+  color: "blue"
+
 inputs:
   installer-version:
     description: "Installer version to use from releases (default: latest)"
