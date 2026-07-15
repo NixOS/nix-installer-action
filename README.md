@@ -58,7 +58,7 @@ You can override this behavior:
 | Platform | Architecture |
 |----------|--------------|
 | Linux | `x86_64`, `aarch64`, `armv7l` |
-| macOS | `x86_64`, `aarch64` |
+| macOS | `aarch64` |
 
 ## License
 
