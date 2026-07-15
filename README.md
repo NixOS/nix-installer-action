@@ -60,6 +60,16 @@ You can override this behavior:
 | Linux | `x86_64`, `aarch64`, `armv7l` |
 | macOS | `aarch64` |
 
+## Releasing
+
+```bash
+scripts/release.sh 1.2.0
+```
+
+Tags `v1.2.0`, moves the floating `v1` tag, and creates a GitHub release
+with generated notes. Requires `gh` with push access and a clean checkout
+of `main`.
+
 ## License
 
 This project is licensed under the LGPL-2.1 License - see the [LICENSE](LICENSE) file for details.
