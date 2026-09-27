@@ -165,6 +165,107 @@ jobs:
           # Nix should still work
           nix run nixpkgs#hello --inputs-from .
 
+  cache-save:
+    name: Store cache (save, ${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+          - os: macos-latest
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: ./
+        with:
+          cache: true
+          extra-conf: |
+            access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify the store cache is wired in
+        run: |
+          nix config show substituters | grep -q "$RUNNER_TEMP/nix-installer-action-cache"
+          nix config show post-build-hook | grep -q nix-installer-action-post-build-hook
+
+      - name: Build a probe no binary cache can serve
+        id: probe
+        run: |
+          BASH=$(nix build --inputs-from . --no-link --print-out-paths 'nixpkgs#bash^out')
+          PROBE=$(nix build --impure --no-link --print-out-paths --expr "derivation {
+            name = \"cache-probe-$GITHUB_RUN_ID\";
+            system = builtins.currentSystem;
+            builder = \"\${builtins.storePath \"$BASH\"}/bin/bash\";
+            args = [ \"-c\" \"echo probe > \$out\" ];
+          }")
+          echo "path=$PROBE" >> "$GITHUB_OUTPUT"
+          echo "Built $PROBE"
+
+      - name: Verify the post-build hook cached the probe
+        run: |
+          PROBE="${{ steps.probe.outputs.path }}"
+          HASH="${PROBE#/nix/store/}"
+          NARINFO="$RUNNER_TEMP/nix-installer-action-cache/${HASH%%-*}.narinfo"
+          if [ ! -f "$NARINFO" ]; then
+            echo "ERROR: the post-build hook did not cache $PROBE"
+            ls -la "$RUNNER_TEMP/nix-installer-action-cache"
+            exit 1
+          fi
+          cat "$NARINFO"
+
+  cache-restore:
+    name: Store cache (restore, ${{ matrix.os }})
+    needs: cache-save
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+          - os: macos-latest
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: ./
+        with:
+          cache: true
+          extra-conf: |
+            access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
+
+      - name: Find this run's probe in the restored cache
+        id: probe
+        run: |
+          CACHE="$RUNNER_TEMP/nix-installer-action-cache"
+          PROBE=$(sed -n 's/^StorePath: //p' "$CACHE"/*.narinfo 2>/dev/null | grep "cache-probe-$GITHUB_RUN_ID" || true)
+          if [ -z "$PROBE" ]; then
+            echo "ERROR: the restored cache does not offer this run's probe"
+            ls -la "$CACHE"
+            exit 1
+          fi
+          echo "path=$PROBE" >> "$GITHUB_OUTPUT"
+          echo "Restored cache offers $PROBE"
+
+      - name: Verify the probe is absent from this fresh store
+        run: |
+          if nix path-info "${{ steps.probe.outputs.path }}" >/dev/null 2>&1; then
+            echo "ERROR: the probe is already present, so restoring it proves nothing"
+            exit 1
+          fi
+
+      - name: Restore the probe from the store cache
+        run: |
+          PROBE="${{ steps.probe.outputs.path }}"
+          nix-store --realise "$PROBE"
+          grep -q probe "$PROBE"
+
   tests:
     name: All tests passed
     runs-on: ubuntu-latest
@@ -172,13 +273,17 @@ jobs:
       - formatting
       - install
       - install-options
+      - cache-save
+      - cache-restore
     if: always()
     steps:
       - name: Check all jobs passed
         run: |
           if [[ "${{ needs.formatting.result }}" != "success" ]] || \
              [[ "${{ needs.install.result }}" != "success" ]] || \
-             [[ "${{ needs.install-options.result }}" != "success" ]]; then
+             [[ "${{ needs.install-options.result }}" != "success" ]] || \
+             [[ "${{ needs.cache-save.result }}" != "success" ]] || \
+             [[ "${{ needs.cache-restore.result }}" != "success" ]]; then
             echo "Some tests failed"
             exit 1
           fi
