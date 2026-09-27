@@ -41,6 +41,32 @@ You can override this behavior:
     init: no  # Explicit: skip init system, start daemon manually
 ```
 
+**Cache the Nix store between runs:**
+
+```yaml
+- uses: NixOS/nix-installer-action@main
+  with:
+    cache: true
+```
+
+When enabled, built paths are cached in the [GitHub Actions cache](https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching) between runs. The cache stops growing once it reaches `cache-max-size`.
+
+Paths that `cache.nixos.org` already serves are dropped refetched from upstream.
+
+By default the cache is saved only on your default branch. Set `cache-push` to override:
+
+```yaml
+- uses: NixOS/nix-installer-action@main
+  with:
+    cache: true
+    cache-push: always # auto (default) | always | never
+    cache-max-size: 5G
+    cache-ignore: https://cache.nixos.org
+```
+
+> [!NOTE]
+> The cache is saved only when the job succeeds.
+
 ## Inputs
 
 | Input | Description | Default |
@@ -52,6 +78,10 @@ You can override this behavior:
 | `add-channel` | Setup the default system channels | `false` |
 | `init` | Init system: `auto` (detect container), `yes` (use systemd/launchd), `no` (manual daemon) | `auto` |
 | `trust-runner-user` | Add the current user to `trusted-users` in nix.conf | `true` |
+| `cache` | Cache the Nix store in the GitHub Actions cache | `false` |
+| `cache-max-size` | Stop adding to the store cache once it reaches this size | `2G` |
+| `cache-ignore` | Do not cache paths these substituters already serve; empty caches everything | `https://cache.nixos.org` |
+| `cache-push` | When to save the cache: `auto` (default branch only), `always`, `never` | `auto` |
 
 ## Supported Platforms
 
