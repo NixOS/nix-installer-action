@@ -51,6 +51,16 @@ You can override this behavior:
 
 When enabled, built paths are cached in the [GitHub Actions cache](https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching) between runs. The cache stops growing once it reaches `cache-max-size`.
 
+By default the cache is saved only on your default branch. Set `cache-push` to override:
+
+```yaml
+- uses: NixOS/nix-installer-action@main
+  with:
+    cache: true
+    cache-push: always # auto (default) | always | never
+    cache-max-size: 5G
+```
+
 > [!NOTE]
 > The cache is saved only when the job succeeds.
 
@@ -67,6 +77,7 @@ When enabled, built paths are cached in the [GitHub Actions cache](https://docs.
 | `trust-runner-user` | Add the current user to `trusted-users` in nix.conf | `true` |
 | `cache` | Cache the Nix store in the GitHub Actions cache | `false` |
 | `cache-max-size` | Stop adding to the store cache once it reaches this size | `2G` |
+| `cache-push` | When to save the cache: `auto` (default branch only), `always`, `never` | `auto` |
 
 ## Supported Platforms
 

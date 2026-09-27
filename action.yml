@@ -54,6 +54,10 @@ inputs:
     description: "Stop adding to the store cache once it reaches this size (byte count with an optional K, M, G or T suffix)"
     required: false
     default: "2G"
+  cache-push:
+    description: "When to save the cache: auto (default branch only), always, never"
+    required: false
+    default: "auto"
 
 runs:
   using: "composite"
@@ -142,6 +146,7 @@ runs:
       if: inputs.cache == 'true'
       env:
         CACHE_MAX_SIZE: ${{ inputs.cache-max-size }}
+        CACHE_PUSH: ${{ inputs.cache-push }}
         EXTRA_CONF: ${{ inputs.extra-conf }}
       run: |
         MAX_SIZE="$(printf '%s' "$CACHE_MAX_SIZE" | tr '[:lower:]' '[:upper:]')"
@@ -158,14 +163,42 @@ runs:
           *) MAX_KB=$(( (MAX_SIZE + 1023) / 1024 )) ;;
         esac
 
+        DEFAULT_BRANCH="${{ github.event.repository.default_branch }}"
+        case "$CACHE_PUSH" in
+          always)
+            PUSH="true"
+            echo "Cache push: always"
+            ;;
+          never)
+            PUSH="false"
+            echo "Cache push: never"
+            ;;
+          auto)
+            if [ -z "$DEFAULT_BRANCH" ]; then
+              PUSH="false"
+              echo "Cache push: auto (restore only, this event does not name the default branch)"
+            elif [ "$GITHUB_REF" = "refs/heads/$DEFAULT_BRANCH" ]; then
+              PUSH="true"
+              echo "Cache push: auto (on default branch '$DEFAULT_BRANCH')"
+            else
+              PUSH="false"
+              echo "Cache push: auto (restore only, '$GITHUB_REF' is not the default branch '$DEFAULT_BRANCH')"
+            fi
+            ;;
+          *)
+            echo "::error ::cache-push must be auto, always or never (got '$CACHE_PUSH')"
+            exit 1
+            ;;
+        esac
+
         CACHE_DIR="${{ runner.temp }}/nix-installer-action-cache"
         HOOK="${{ runner.temp }}/nix-installer-action-post-build-hook.sh"
 
         mkdir -p "$CACHE_DIR/nar"
         printf 'StoreDir: /nix/store\nWantMassQuery: 1\nPriority: 10\n' >"$CACHE_DIR/nix-cache-info"
 
-        if printf '%s' "$EXTRA_CONF" | grep -Eq '^[[:space:]]*post-build-hook[[:space:]]*='; then
-          echo "::error ::extra-conf sets post-build-hook, which the store cache needs; remove it or set cache to false"
+        if [ "$PUSH" = "true" ] && printf '%s' "$EXTRA_CONF" | grep -Eq '^[[:space:]]*post-build-hook[[:space:]]*='; then
+          echo "::error ::extra-conf sets post-build-hook, which replaces the one the store cache needs; remove it, or set cache-push to never to restore without saving"
           exit 1
         fi
 
@@ -179,6 +212,7 @@ runs:
         # another leg reserved first.
         KEY_PREFIX="nix-store-${{ steps.platform.outputs.system }}-"
         {
+          echo "push=$PUSH"
           echo "dir=$CACHE_DIR"
           echo "hook=$HOOK"
           echo "key=$KEY_PREFIX$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$GITHUB_JOB-$RANDOM"
@@ -188,8 +222,16 @@ runs:
     # actions/cache re-reads `path` in its post step, where a nested composite
     # action has no `steps` context: https://github.com/actions/runner/issues/2009
     - name: Restore and save Nix store cache
-      if: inputs.cache == 'true'
+      if: steps.cache.outputs.push == 'true'
       uses: actions/cache@v6
+      with:
+        path: ${{ runner.temp }}/nix-installer-action-cache
+        key: ${{ steps.cache.outputs.key }}
+        restore-keys: ${{ steps.cache.outputs.restore-keys }}
+
+    - name: Restore Nix store cache (read-only)
+      if: inputs.cache == 'true' && steps.cache.outputs.push != 'true'
+      uses: actions/cache/restore@v6
       with:
         path: ${{ runner.temp }}/nix-installer-action-cache
         key: ${{ steps.cache.outputs.key }}
@@ -314,6 +356,8 @@ runs:
         fi
         if [ "${{ inputs.cache }}" == "true" ]; then
           EXTRA_CONF="$EXTRA_CONF"$'\n'"extra-substituters = file://${{ steps.cache.outputs.dir }}?trusted=true&priority=10"
+        fi
+        if [ "${{ steps.cache.outputs.push }}" == "true" ]; then
           EXTRA_CONF="$EXTRA_CONF"$'\n'"post-build-hook = ${{ steps.cache.outputs.hook }}"
         fi
         if [ -n "${{ inputs.extra-conf }}" ]; then

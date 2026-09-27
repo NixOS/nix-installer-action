@@ -184,6 +184,7 @@ jobs:
         uses: ./
         with:
           cache: true
+          cache-push: always
           extra-conf: |
             access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
 
@@ -237,6 +238,7 @@ jobs:
         uses: ./
         with:
           cache: true
+          cache-push: never
           extra-conf: |
             access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
 
@@ -265,6 +267,14 @@ jobs:
           PROBE="${{ steps.probe.outputs.path }}"
           nix-store --realise "$PROBE"
           grep -q probe "$PROBE"
+
+      - name: Verify a restore-only job saves no cache
+        run: |
+          if nix config show post-build-hook | grep -q nix-installer-action-post-build-hook; then
+            echo "ERROR: cache-push: never must not install a post-build hook"
+            exit 1
+          fi
+          echo "Confirmed: no post-build hook with cache-push: never"
 
   tests:
     name: All tests passed
