@@ -197,14 +197,16 @@ jobs:
         id: probe
         run: |
           BASH=$(nix build --inputs-from . --no-link --print-out-paths 'nixpkgs#bash^out')
+          HELLO=$(nix build --inputs-from . --no-link --print-out-paths nixpkgs#hello)
           PROBE=$(nix build --impure --no-link --print-out-paths --expr "derivation {
             name = \"cache-probe-$GITHUB_RUN_ID\";
             system = builtins.currentSystem;
             builder = \"\${builtins.storePath \"$BASH\"}/bin/bash\";
-            args = [ \"-c\" \"echo probe > \$out\" ];
+            args = [ \"-c\" \"echo \${builtins.storePath \"$HELLO\"} > \$out\" ];
           }")
           echo "path=$PROBE" >> "$GITHUB_OUTPUT"
-          echo "Built $PROBE"
+          echo "upstream=$HELLO" >> "$GITHUB_OUTPUT"
+          echo "Built $PROBE referencing $HELLO"
 
       - name: Verify the post-build hook cached the probe
         run: |
@@ -217,6 +219,17 @@ jobs:
             exit 1
           fi
           cat "$NARINFO"
+
+      - name: Verify cache-ignore dropped the upstream paths
+        run: |
+          UPSTREAM="${{ steps.probe.outputs.upstream }}"
+          HASH="${UPSTREAM#/nix/store/}"
+          NARINFO="$RUNNER_TEMP/nix-installer-action-cache/${HASH%%-*}.narinfo"
+          if [ -f "$NARINFO" ]; then
+            echo "ERROR: cache.nixos.org serves $UPSTREAM, so it should not be cached"
+            exit 1
+          fi
+          echo "Confirmed: $UPSTREAM was pruned from the store cache"
 
   cache-restore:
     name: Store cache (restore, ${{ matrix.os }})
@@ -266,7 +279,7 @@ jobs:
         run: |
           PROBE="${{ steps.probe.outputs.path }}"
           nix-store --realise "$PROBE"
-          grep -q probe "$PROBE"
+          grep -q '^/nix/store/.*-hello-' "$PROBE"
 
       - name: Verify a restore-only job saves no cache
         run: |
