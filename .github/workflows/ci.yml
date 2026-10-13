@@ -28,14 +28,16 @@ jobs:
         uses: ./
         with:
           trust-runner-user: true
-          extra-conf: |
-            access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
 
       - name: Verify Nix installation
         run: |
           nix --version
           nix-instantiate --eval -E 'builtins.currentTime'
           nix config check
+
+      - name: Verify access-tokens is set for github.com
+        run: |
+          nix config show access-tokens | grep -q 'github.com='
 
       - name: Verify trusted-users includes runner user
         run: |
@@ -165,6 +167,40 @@ jobs:
           # Nix should still work
           nix run nixpkgs#hello --inputs-from .
 
+  github-token:
+    name: GitHub token (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: caller-wins
+            github-token: ${{ github.token }}
+            extra-conf: "access-tokens = github.com=caller-supplied-value"
+            expect: "github.com=caller-supplied-value"
+          - name: disabled
+            github-token: ""
+            extra-conf: ""
+            expect: ""
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./
+        with:
+          github-token: ${{ matrix.github-token }}
+          extra-conf: ${{ matrix.extra-conf }}
+
+      - name: Verify access-tokens
+        env:
+          EXPECT: ${{ matrix.expect }}
+        run: |
+          got="$(nix config show access-tokens | tr -d '[:space:]')"
+          want="$(printf '%s' "$EXPECT" | tr -d '[:space:]')"
+          if [ "$got" != "$want" ]; then
+            echo "access-tokens is not what the caller asked for"
+            exit 1
+          fi
+
   tests:
     name: All tests passed
     runs-on: ubuntu-latest
@@ -172,14 +208,17 @@ jobs:
       - formatting
       - install
       - install-options
+      - github-token
     if: always()
     steps:
       - name: Check all jobs passed
         run: |
           if [[ "${{ needs.formatting.result }}" != "success" ]] || \
              [[ "${{ needs.install.result }}" != "success" ]] || \
-             [[ "${{ needs.install-options.result }}" != "success" ]]; then
+             [[ "${{ needs.install-options.result }}" != "success" ]] || \
+             [[ "${{ needs.github-token.result }}" != "success" ]]; then
             echo "Some tests failed"
             exit 1
           fi
           echo "All tests passed"
+
