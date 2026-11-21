@@ -154,17 +154,16 @@ runs:
         else
           VERSION="${{ inputs.installer-version }}"
           INSTALLER_DIR="/tmp/nix-installer"
+          CURL_FLAGS=("--retry" "3" "--silent")
 
           mkdir -p "$INSTALLER_DIR"
 
           echo "Downloading nix-installer $VERSION for $SYSTEM"
 
-          # TODO: curl retries.
-
           if [ "$VERSION" == "latest" ]; then
             # Grab the redirect target for the latest nix release. It points to releases.nixos.org/nix/nix-$VERSION/nix-installer, so
             # we can just append the -$SYSTEM to it.
-            LATEST_LOCATION=$(curl --head https://channels.nixos.org/nix-latest/nix-installer --write-out "%{redirect_url}\n" --output /dev/null)
+            LATEST_LOCATION=$(curl "${CURL_FLAGS[@]}" --head https://channels.nixos.org/nix-latest/nix-installer --write-out "%{redirect_url}\n" --output /dev/null)
             DOWNLOAD_URL="${LATEST_LOCATION}-${SYSTEM}"
           # TODO: Compatibility with beta nix releases for versions < 2.36.0 that point to github releases.
           else
@@ -172,7 +171,8 @@ runs:
           fi
 
           echo "Downloading from: $DOWNLOAD_URL"
-          curl -L -f -o "$INSTALLER_DIR/$BINARY_NAME" "$DOWNLOAD_URL"
+          # "-C -" tells curl to automatically find where to resume the download when retrying.
+          curl "${CURL_FLAGS[@]}" --continue-at - -L -f -o "$INSTALLER_DIR/$BINARY_NAME" "$DOWNLOAD_URL"
 
           if [ $? -ne 0 ] || [ ! -f "$INSTALLER_DIR/$BINARY_NAME" ]; then
             echo "::error ::Failed to download installer binary: $BINARY_NAME"
