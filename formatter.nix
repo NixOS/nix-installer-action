@@ -4,6 +4,7 @@
   programs.nixfmt.enable = true;
   programs.nixf-diagnose.enable = true;
   programs.actionlint.enable = true;
+  programs.shellcheck.enable = true;
   programs.typos.enable = true;
 
   programs.yamlfmt = {
