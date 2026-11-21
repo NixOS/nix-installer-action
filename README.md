@@ -27,7 +27,7 @@ A GitHub Action to install [Nix](https://nixos.org) using the [NixOS nix-install
 ```yaml
 - uses: NixOS/nix-installer-action@main
   with:
-    installer-version: 2.33.3
+    installer-version: 2.36.0
 ```
 
 **Container environments (e.g., `ubuntu-slim`):**

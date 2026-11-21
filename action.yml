@@ -1,5 +1,5 @@
 name: "Install Nix"
-description: "Install Nix using the experimental nix-installer"
+description: "Install Nix using the nix-installer"
 
 branding:
   icon: "box"
@@ -154,24 +154,30 @@ runs:
         else
           VERSION="${{ inputs.installer-version }}"
           INSTALLER_DIR="/tmp/nix-installer"
+          CURL_FLAGS=("--retry" "3" "--silent")
 
           mkdir -p "$INSTALLER_DIR"
 
-          echo "Downloading nix-installer $VERSION for $SYSTEM from GitHub releases"
+          echo "Downloading nix-installer $VERSION for $SYSTEM"
 
           if [ "$VERSION" == "latest" ]; then
-            DOWNLOAD_URL="https://github.com/NixOS/nix-installer/releases/latest/download/${BINARY_NAME}"
+            # Grab the redirect target for the latest nix release. It points to releases.nixos.org/nix/nix-$VERSION/nix-installer, so
+            # we can just append the -$SYSTEM to it.
+            LATEST_LOCATION=$(curl "${CURL_FLAGS[@]}" --head https://channels.nixos.org/nix-latest/nix-installer --write-out "%{redirect_url}\n" --output /dev/null)
+            DOWNLOAD_URL="${LATEST_LOCATION}-${SYSTEM}"
+          # TODO: Compatibility with beta nix releases for versions < 2.36.0 that point to github releases.
           else
-            DOWNLOAD_URL="https://github.com/NixOS/nix-installer/releases/download/${VERSION}/${BINARY_NAME}"
+            DOWNLOAD_URL="https://releases.nixos.org/nix/nix-${VERSION}/${BINARY_NAME}"
           fi
 
           echo "Downloading from: $DOWNLOAD_URL"
-          curl -L -f -o "$INSTALLER_DIR/$BINARY_NAME" "$DOWNLOAD_URL"
+          # "-C -" tells curl to automatically find where to resume the download when retrying.
+          curl "${CURL_FLAGS[@]}" --continue-at - -L -f -o "$INSTALLER_DIR/$BINARY_NAME" "$DOWNLOAD_URL"
 
           if [ $? -ne 0 ] || [ ! -f "$INSTALLER_DIR/$BINARY_NAME" ]; then
             echo "::error ::Failed to download installer binary: $BINARY_NAME"
             echo "::error ::Version: $VERSION"
-            echo "::error ::Check available releases: https://github.com/NixOS/nix-installer/releases"
+            echo "::error ::Check available releases: https://releases.nixos.org/?prefix=nix/"
             exit 1
           fi
 
@@ -252,6 +258,8 @@ runs:
             EXTRA_CONF="${{ inputs.extra-conf }}"
           fi
         fi
+        # TODO: Detect certificate bundle on the host instead of potentially using
+        # the bundled cacert package.
         if [ -n "$EXTRA_CONF" ]; then
           INSTALL_ARGS+=(--extra-conf "$EXTRA_CONF")
         fi
