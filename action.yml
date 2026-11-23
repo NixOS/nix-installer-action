@@ -46,6 +46,10 @@ inputs:
     description: "Enable KVM for hardware-accelerated virtualization on Linux runners"
     required: false
     default: "true"
+  github-token:
+    description: "Token Nix uses for github.com, written to nix.conf as access-tokens. Set to the empty string to write none."
+    required: false
+    default: ${{ github.token }}
 
 runs:
   using: "composite"
@@ -200,6 +204,9 @@ runs:
       shell: bash
       env:
         NIX_INSTALLER_NO_CONFIRM: "true"
+        # Through the environment, not through ${{ }}: interpolation puts
+        # the value in the script text, where set -x traces it.
+        GITHUB_TOKEN_FOR_NIX: ${{ inputs.github-token }}
       run: |
         set -x
         INSTALLER_DIR="${{ steps.download.outputs.path }}"
@@ -252,6 +259,20 @@ runs:
             EXTRA_CONF="${{ inputs.extra-conf }}"
           fi
         fi
+        # Without access-tokens, Nix fetches from github.com anonymously and
+        # gets 60 requests an hour, shared with everything else on the
+        # runner's address. Skipped when the caller has set access-tokens
+        # themselves, so their value is not written alongside this one.
+        if [ -n "${GITHUB_TOKEN_FOR_NIX:-}" ] &&
+          ! printf '%s\n' "$EXTRA_CONF" | grep -qE '(^|[[:space:]])(extra-)?access-tokens[[:space:]]*='; then
+          set +x
+          if [ -n "$EXTRA_CONF" ]; then
+            EXTRA_CONF="$EXTRA_CONF"$'\n'"access-tokens = github.com=$GITHUB_TOKEN_FOR_NIX"
+          else
+            EXTRA_CONF="access-tokens = github.com=$GITHUB_TOKEN_FOR_NIX"
+          fi
+          set -x
+        fi
         if [ -n "$EXTRA_CONF" ]; then
           INSTALL_ARGS+=(--extra-conf "$EXTRA_CONF")
         fi
@@ -269,13 +290,24 @@ runs:
             ;;
         esac
 
+        # Clean out the token before showing it to the logs. Use the loop that
+        # is compatible with macOS's bash 3.2.
+        set +x
+        SHOWN_ARGS=()
+        for arg in "${INSTALL_ARGS[@]}"; do
+          if [ -n "${GITHUB_TOKEN_FOR_NIX:-}" ]; then
+            arg="${arg//$GITHUB_TOKEN_FOR_NIX/***}"
+          fi
+          SHOWN_ARGS+=("$arg")
+        done
+
         echo "::group::Installation command"
         echo "PLANNER: '$PLANNER'"
         echo "add-channel input: ${{ inputs.add-channel }}"
         if [ -n "$PLANNER" ]; then
-          echo "Full command: sudo $INSTALLER_BINARY install $PLANNER ${INSTALL_ARGS[@]}"
+          echo "Full command: sudo $INSTALLER_BINARY install $PLANNER ${SHOWN_ARGS[@]}"
         else
-          echo "Full command: sudo $INSTALLER_BINARY install ${INSTALL_ARGS[@]}"
+          echo "Full command: sudo $INSTALLER_BINARY install ${SHOWN_ARGS[@]}"
         fi
         echo "::endgroup::"
 
