@@ -46,6 +46,10 @@ inputs:
     description: "Enable KVM for hardware-accelerated virtualization on Linux runners"
     required: false
     default: "true"
+  cache:
+    description: "Cache the Nix store in the GitHub Actions cache"
+    required: false
+    default: "false"
 
 runs:
   using: "composite"
@@ -127,6 +131,47 @@ runs:
         fi
 
         echo "use_init=$USE_INIT" >> "$GITHUB_OUTPUT"
+
+    - name: Plan Nix store cache
+      shell: bash
+      id: cache
+      if: inputs.cache == 'true'
+      env:
+        EXTRA_CONF: ${{ inputs.extra-conf }}
+      run: |
+        CACHE_DIR="${{ runner.temp }}/nix-installer-action-cache"
+        HOOK="${{ runner.temp }}/nix-installer-action-post-build-hook.sh"
+
+        mkdir -p "$CACHE_DIR/nar"
+        printf 'StoreDir: /nix/store\nWantMassQuery: 1\nPriority: 10\n' >"$CACHE_DIR/nix-cache-info"
+
+        if printf '%s' "$EXTRA_CONF" | grep -Eq '^[[:space:]]*post-build-hook[[:space:]]*='; then
+          echo "::error ::extra-conf sets post-build-hook, which the store cache needs; remove it or set cache to false"
+          exit 1
+        fi
+
+        install -m 0755 "$GITHUB_ACTION_PATH/scripts/post-build-hook.sh" "$HOOK"
+        printf "cache_dir='%s'\n" "$CACHE_DIR" >"${HOOK%.sh}.env"
+
+        # Matrix legs share GITHUB_JOB, and actions/cache drops a save whose key
+        # another leg reserved first.
+        KEY_PREFIX="nix-store-${{ steps.platform.outputs.system }}-"
+        {
+          echo "dir=$CACHE_DIR"
+          echo "hook=$HOOK"
+          echo "key=$KEY_PREFIX$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$GITHUB_JOB-$RANDOM"
+          echo "restore-keys=$KEY_PREFIX"
+        } >>"$GITHUB_OUTPUT"
+
+    # actions/cache re-reads `path` in its post step, where a nested composite
+    # action has no `steps` context: https://github.com/actions/runner/issues/2009
+    - name: Restore and save Nix store cache
+      if: inputs.cache == 'true'
+      uses: actions/cache@v6
+      with:
+        path: ${{ runner.temp }}/nix-installer-action-cache
+        key: ${{ steps.cache.outputs.key }}
+        restore-keys: ${{ steps.cache.outputs.restore-keys }}
 
     - name: Download installer from release
       shell: bash
@@ -244,6 +289,10 @@ runs:
         fi
         if [ "${{ inputs.enable-kvm }}" == "true" ] && [ -e /dev/kvm ]; then
           EXTRA_CONF="$EXTRA_CONF"$'\n'"extra-system-features = kvm"
+        fi
+        if [ "${{ inputs.cache }}" == "true" ]; then
+          EXTRA_CONF="$EXTRA_CONF"$'\n'"extra-substituters = file://${{ steps.cache.outputs.dir }}?trusted=true&priority=10"
+          EXTRA_CONF="$EXTRA_CONF"$'\n'"post-build-hook = ${{ steps.cache.outputs.hook }}"
         fi
         if [ -n "${{ inputs.extra-conf }}" ]; then
           if [ -n "$EXTRA_CONF" ]; then
