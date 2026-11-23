@@ -9,7 +9,7 @@ inputs:
   installer-version:
     description: "Installer version to use from releases (default: latest)"
     required: false
-    default: "latest"
+    default: ""
   extra-conf:
     description: "Extra configuration lines to append to /etc/nix/nix.conf"
     required: false
@@ -131,6 +131,8 @@ runs:
     - name: Download installer from release
       shell: bash
       id: download
+      env:
+        GH_TOKEN: ${{ github.token }}
       run: |
         SYSTEM="${{ steps.platform.outputs.system }}"
         BINARY_NAME="nix-installer-${SYSTEM}"
@@ -152,29 +154,14 @@ runs:
           echo "path=$INSTALLER_DIR" >> "$GITHUB_OUTPUT"
           echo "Using locally built installer: $INSTALLER_DIR/$BINARY_NAME"
         else
-          VERSION="${{ inputs.installer-version }}"
           INSTALLER_DIR="/tmp/nix-installer"
 
           mkdir -p "$INSTALLER_DIR"
-
-          echo "Downloading nix-installer $VERSION for $SYSTEM from GitHub releases"
-
-          if [ "$VERSION" == "latest" ]; then
-            DOWNLOAD_URL="https://github.com/NixOS/nix-installer/releases/latest/download/${BINARY_NAME}"
-          else
-            DOWNLOAD_URL="https://github.com/NixOS/nix-installer/releases/download/${VERSION}/${BINARY_NAME}"
-          fi
-
-          echo "Downloading from: $DOWNLOAD_URL"
-          curl -L -f -o "$INSTALLER_DIR/$BINARY_NAME" "$DOWNLOAD_URL"
-
-          if [ $? -ne 0 ] || [ ! -f "$INSTALLER_DIR/$BINARY_NAME" ]; then
-            echo "::error ::Failed to download installer binary: $BINARY_NAME"
-            echo "::error ::Version: $VERSION"
-            echo "::error ::Check available releases: https://github.com/NixOS/nix-installer/releases"
-            exit 1
-          fi
-
+          VERSION="${{ inputs.installer-version }}"
+          # Resolves the latest version if no explicit version was passed;
+          VERSION=$(gh release verify --repo NixOS/nix-installer ${VERSION:+"$VERSION"} --format json --jq .verificationResult.statement.predicate.tag)
+          gh release download --repo NixOS/nix-installer "$VERSION" --dir "${INSTALLER_DIR}" --pattern "$BINARY_NAME"
+          gh release verify-asset --repo NixOS/nix-installer "$VERSION" "$INSTALLER_DIR/$BINARY_NAME"
           chmod +x "$INSTALLER_DIR/$BINARY_NAME"
           echo "path=$INSTALLER_DIR" >> "$GITHUB_OUTPUT"
           echo "Downloaded installer to: $INSTALLER_DIR/$BINARY_NAME"
